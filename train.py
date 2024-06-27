@@ -41,11 +41,10 @@ patience_counter = 0
 for epoch in range(epochs):
     # Training phase
     model.train()
-    for batch in train_dataloader:
-        inputs, targets = batch[0].to(device), batch[1].to(device)
+    for  X, y in train_dataloader:
+        inputs, targets = X.to(device), y.to(device)
         optimizer.zero_grad()
         outputs = model(inputs)
-        print(outputs.shape, targets.shape)
         loss = loss_fn(outputs, targets)
         loss.backward()
         optimizer.step()
@@ -54,8 +53,8 @@ for epoch in range(epochs):
     model.eval()
     val_loss = 0
     with torch.no_grad():
-        for batch in test_dataloader:
-            inputs, targets = batch[0].to(device), batch[1].to(device)
+        for X, y in test_dataloader:
+            inputs, targets = X.to(device), y.to(device)
             outputs = model(inputs)
             loss = loss_fn(outputs, targets)
             val_loss += loss.item()
