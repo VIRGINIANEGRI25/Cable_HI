@@ -1,6 +1,7 @@
 import torch 
 from torch import nn, relu 
 import numpy as np
+import torch.nn.functional as F
 
 class Cnn(torch.nn.Module):
   # defined the initialization method
@@ -23,6 +24,69 @@ class Cnn(torch.nn.Module):
     x = self.output_layer(x)
     return x
 
+class Cnnv2(torch.nn.Module):
+    def __init__(self, inputs, outputs, batch_size, dropout_prob=0.3):
+        super(Cnnv2, self).__init__()
+        self.inputs = inputs
+        self.outputs = outputs
+        self.batch_size = batch_size
+        
+        self.conv = nn.Conv1d(inputs, outputs, 1)
+        
+        self.batch_norm = nn.BatchNorm1d(outputs)
+        
+        self.dropout = nn.Dropout(dropout_prob)
+        
+        self.output_layer = nn.Linear(outputs, outputs)
+
+    def forward(self, x):
+        x = x.reshape((self.batch_size, self.inputs, 1))
+        x = self.conv(x)
+        x = self.batch_norm(x)
+        x = F.relu(x)
+        x = self.dropout(x)
+        x = x.view(self.batch_size, -1)
+        x = self.output_layer(x)
+        return x
+    
+class Convlstm(torch.nn.Module):
+    def __init__(self, inputs, outputs, batch_size, lstm_hidden_size= 32, num_lstm_layers=1, dropout_prob=0.3):
+        super(Convlstm, self).__init__()
+        self.inputs = inputs
+        self.outputs = outputs
+        self.batch_size = batch_size
+        self.lstm_hidden_size = lstm_hidden_size
+        self.num_lstm_layers = num_lstm_layers
+        
+        self.conv = nn.Conv1d(inputs, outputs, 1)
+        
+        self.batch_norm = nn.BatchNorm1d(outputs)
+        
+        self.dropout = nn.Dropout(dropout_prob)
+        
+        self.fc1 = nn.Linear(outputs, outputs)
+        
+        self.bilstm = nn.LSTM(input_size=outputs, hidden_size=lstm_hidden_size, 
+                              num_layers=num_lstm_layers, batch_first=True, bidirectional=True)
+        
+        self.fc2 = nn.Linear(lstm_hidden_size * 2, batch_size)
+
+    def forward(self, x):
+        x = x.reshape((self.batch_size, self.inputs, 1))
+        x = self.conv(x)
+        x = self.batch_norm(x)
+        x = F.relu(x)
+        x = self.dropout(x)
+        x = x.view(self.batch_size, -1)
+        x = self.fc1(x)
+        x = x.reshape((self.batch_size, 1, -1))
+        lstm_out, _ = self.bilstm(x)
+        lstm_out = lstm_out[:, -1, :]
+        x = F.relu(x)
+        x = self.fc2(lstm_out)
+        
+        return x
+    
 def train(dataloader, model, loss_fn, optimizer, verbose=True):
     size = len(dataloader.dataset)
     model.train()
@@ -56,3 +120,21 @@ def test(dataloader, model, loss_fn, verbose=True):
     test_loss /= num_batches
     if verbose == True:
         print(f"Test Avg loss: {test_loss:>8f} \n")
+
+
+def evaluate_model(model, dataloader, device):
+    model.eval()
+    all_predictions = []
+    all_targets = []
+
+    with torch.no_grad():
+        for batch in dataloader:
+            inputs, targets = batch[0].to(device), batch[1].to(device)
+            outputs = model(inputs)
+            all_predictions.append(outputs.cpu().numpy())
+            all_targets.append(targets.cpu().numpy())
+
+    all_predictions = np.concatenate(all_predictions)
+    all_targets = np.concatenate(all_targets)
+
+    return all_predictions, all_targets
