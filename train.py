@@ -17,7 +17,7 @@ data = HI_computation(data, scaled_data)
 # data = one_hot_encoding(data)
 # print(data)
 
-batch_size = 2
+batch_size = 1
 train_dataset, test_dataset = train_test_datasets(data)
 train_dataloader, test_dataloader = train_test_dataloaders(train_dataset, test_dataset, batch_size)
 
@@ -25,6 +25,14 @@ for X, y in train_dataloader:
     print(f"Shape of X: {X.shape}")
     print(f"Shape of y: {y.shape} {y.dtype}")
     break
+
+#dummy_input = torch.randn(batch_size, 6).to(device)
+#model = Convlstm(X.shape[1], y.shape[0], batch_size).to(device)
+# Pass the input through the model
+#output = model(dummy_input)
+
+# Print the output
+#print(output.shape)
 
 # Instantiate model and move to CUDA if available
 #model = Cnn(X.shape[1], y.shape[0], batch_size).to(device)
@@ -43,6 +51,8 @@ for epoch in range(epochs):
     model.train()
     for  X, y in train_dataloader:
         inputs, targets = X.to(device), y.to(device)
+        #print(inputs.shape)
+        inputs = inputs.squeeze(1)
         optimizer.zero_grad()
         outputs = model(inputs)
         loss = loss_fn(outputs, targets)
@@ -85,3 +95,5 @@ plt.title('Ground Truth vs Predictions')
 plt.legend()
 plt.grid(True)
 plt.show()
+'''
+'''

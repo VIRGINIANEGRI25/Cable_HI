@@ -4,25 +4,23 @@ import numpy as np
 import torch.nn.functional as F
 
 class Cnn(torch.nn.Module):
-  # defined the initialization method
-  def __init__(self, inputs, outputs, batch_size):
-    # initialization of the superclass
-    super(Cnn, self).__init__()
-    # store the parameters
-    self.inputs = inputs
-    self.outputs = outputs
-    self.batch_size = batch_size
-    # define the convolutional layer
-    self.conv = nn.Conv1d(inputs, outputs, 1)
-   
-    # define the output layer
-    self.output_layer = nn.Linear(1, outputs)
+    def __init__(self, inputs, outputs, batch_size):
+        super(Cnn, self).__init__()
+        self.inputs = inputs
+        self.outputs = outputs
+        self.batch_size = batch_size
+        
+        self.conv = nn.Conv1d(1, outputs, kernel_size=1)
+        
+        self.output_layer = nn.Linear(outputs * inputs, 1)
 
-  def forward(self, x):
-    x = x.reshape((self.batch_size, self.inputs, 1))
-    x = relu(self.conv(x))
-    x = self.output_layer(x)
-    return x
+    def forward(self, x):
+        x = x.reshape((self.batch_size, 1, self.inputs))  # Reshape input for Conv1d
+        x = F.relu(self.conv(x))
+        x = x.view(self.batch_size, -1)  # Flatten for the fully connected layer
+        x = self.output_layer(x)
+        x = x.view(self.batch_size)  # Flatten to shape (batch_size,)
+        return x
 
 class Cnnv2(torch.nn.Module):
     def __init__(self, inputs, outputs, batch_size, dropout_prob=0.3):
@@ -31,22 +29,23 @@ class Cnnv2(torch.nn.Module):
         self.outputs = outputs
         self.batch_size = batch_size
         
-        self.conv = nn.Conv1d(inputs, outputs, 1)
+        self.conv = nn.Conv1d(1, outputs, kernel_size=1)
         
         self.batch_norm = nn.BatchNorm1d(outputs)
         
         self.dropout = nn.Dropout(dropout_prob)
         
-        self.output_layer = nn.Linear(outputs, outputs)
+        self.output_layer = nn.Linear(outputs * inputs, 1)
 
     def forward(self, x):
-        x = x.reshape((self.batch_size, self.inputs, 1))
+        x = x.reshape((self.batch_size, 1, self.inputs))
         x = self.conv(x)
         x = self.batch_norm(x)
         x = F.relu(x)
         x = self.dropout(x)
         x = x.view(self.batch_size, -1)
         x = self.output_layer(x)
+        x = x.view(self.batch_size)
         return x
     
 class Convlstm(torch.nn.Module):
@@ -58,7 +57,7 @@ class Convlstm(torch.nn.Module):
         self.lstm_hidden_size = lstm_hidden_size
         self.num_lstm_layers = num_lstm_layers
         
-        self.conv = nn.Conv1d(inputs, outputs, 1)
+        self.conv = nn.Conv1d(1, outputs, kernel_size=1)
         
         self.batch_norm = nn.BatchNorm1d(outputs)
         
@@ -72,7 +71,7 @@ class Convlstm(torch.nn.Module):
         self.fc2 = nn.Linear(lstm_hidden_size * 2, batch_size)
 
     def forward(self, x):
-        x = x.reshape((self.batch_size, self.inputs, 1))
+        x = x.reshape((self.batch_size, 1, self.inputs))
         x = self.conv(x)
         x = self.batch_norm(x)
         x = F.relu(x)
