@@ -26,17 +26,16 @@ for X, y in train_dataloader:
     print(f"Shape of y: {y.shape} {y.dtype}")
     break
 
+# for testing the model
 #dummy_input = torch.randn(batch_size, 6).to(device)
 #model = Convlstm(X.shape[1], y.shape[0], batch_size).to(device)
-# Pass the input through the model
 #output = model(dummy_input)
-
-# Print the output
 #print(output.shape)
 
+
 # Instantiate model and move to CUDA if available
-#model = Cnn(X.shape[1], y.shape[0], batch_size).to(device)
-model = Cnnv2(X.shape[1], y.shape[0], batch_size).to(device)
+model = Cnn(X.shape[1], y.shape[0], batch_size).to(device)
+#model = Cnnv2(X.shape[1], y.shape[0], batch_size).to(device)
 #model = Convlstm(X.shape[1], y.shape[0], batch_size).to(device)
 loss_fn = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
