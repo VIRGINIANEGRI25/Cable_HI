@@ -23,6 +23,10 @@ def scale_data(data):
 
     return scaled_data
 
+def visual_condition_inversion(data):
+   data['Visual_Condition'] = data['Visual_Condition'].map({0:4,1:3,2:2,3:1,4:0})
+   return data
+    
 def HI_computation(data, scaled_data):
     # weights
     w_availability_age = 3
@@ -33,12 +37,12 @@ def HI_computation(data, scaled_data):
     w_operator_age = 3
     w_operator_PD = 2
     w_operator_TD = 2
-    w_operator_neutral_corrosion = 1
+    w_operator_neutral_corrosion = 2
     w_operator_visual_condition = 1
     w_instrumentation_age = 3
     w_instrumentation_PD = 1
     w_instrumentation_TD = 1
-    w_instrumentation_neutral_corrosion = 3
+    w_instrumentation_neutral_corrosion = 1
     w_instrumentation_visual_condition = 3
     w_age = 1
     w_PD = 2
