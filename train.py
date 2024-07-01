@@ -1,4 +1,4 @@
-from preprocessing import load_data, scale_data, HI_computation, one_hot_encoding
+from preprocessing import load_data, scale_data, HI_computation, visual_condition_inversion, one_hot_encoding
 from model import Cnn, Convlstm, evaluate_model
 from dataloader import train_test_datasets, train_test_dataloaders
 import torch
@@ -12,10 +12,13 @@ print('Using device:', device)
 # Load data
 data = load_data('XLPE_data.xlsx')
 #print(data)
+data = visual_condition_inversion(data)
 scaled_data = scale_data(data)
 data = HI_computation(data, scaled_data)
-# data = one_hot_encoding(data)
-# print(data)
+#print(data)
+#data = one_hot_encoding(data)
+#print(data)
+
 
 batch_size = 1
 train_dataset, test_dataset = train_test_datasets(data)
