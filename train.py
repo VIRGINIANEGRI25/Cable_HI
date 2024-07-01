@@ -1,5 +1,5 @@
 from preprocessing import load_data, scale_data, HI_computation, one_hot_encoding
-from model import Cnn, Cnnv2, Convlstm, evaluate_model
+from model import Cnn, Convlstm, evaluate_model
 from dataloader import train_test_datasets, train_test_dataloaders
 import torch
 from torch import nn
@@ -35,7 +35,6 @@ for X, y in train_dataloader:
 
 # Instantiate model and move to CUDA if available
 model = Cnn(X.shape[1], y.shape[0], batch_size).to(device)
-#model = Cnnv2(X.shape[1], y.shape[0], batch_size).to(device)
 #model = Convlstm(X.shape[1], y.shape[0], batch_size).to(device)
 loss_fn = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
