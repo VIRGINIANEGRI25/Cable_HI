@@ -14,6 +14,7 @@ def custom_collate(batch):
     outputs = torch.stack([item[1] for item in batch])
     return graph_data_list, outputs
 
+
 class CustomTensorDataset(Dataset):
     def __init__(self, directory, train=True, validation_split=0.2, random_seed=42):
         self.file_paths = [os.path.join(directory, fname) for fname in os.listdir(directory) if fname.endswith('.pt')]
@@ -33,14 +34,28 @@ class CustomTensorDataset(Dataset):
         tensor_dict = self.data[idx]
         x = tensor_dict['input']
         y = tensor_dict['output']
-        
-        # Define edges (specific connections: 1st-2nd, 1st-3rd, 2nd-3rd)
-        edge_index = torch.tensor([[0, 0, 1],
-                                   [1, 2, 2]], dtype=torch.long)
-        
+
+        num_nodes = x.size(0)
+        if num_nodes == 2:
+            edge_index = torch.tensor([[0], [1]], dtype=torch.long)
+        elif num_nodes == 3:
+            edge_index = torch.tensor([[0, 0, 1], [1, 2, 2]], dtype=torch.long)
+        else:
+            edge_index = torch.empty((2, 0), dtype=torch.long)  # No edges for 1 node
+
         graph_data = Data(x=x, edge_index=edge_index)
-        
         return graph_data, y
+
+# Directory containing the tensor files
+data_directory = 'data_processed'
+train_dataset = CustomTensorDataset(data_directory, train=True)
+val_dataset = CustomTensorDataset(data_directory, train=False)
+
+batch_size = 512 
+shuffle = True
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=custom_collate)
+val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate)
+
 
 # Directory containing the tensor files
 data_directory = 'data_processed'
