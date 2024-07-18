@@ -9,8 +9,8 @@ def process_csv(file_path):
     df = pd.read_csv(file_path)
     
     # Extract input (first 3 columns) and output (4th column)
-    input_data = df.iloc[:, :3].values
-    output_data = df.iloc[:, 3].values
+    input_data = df.iloc[:3, :].values
+    output_data = df.iloc[3, :].values
     
     # Convert to PyTorch tensors
     input_tensor = torch.tensor(input_data, dtype=torch.float32)
