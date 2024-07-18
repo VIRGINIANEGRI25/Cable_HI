@@ -131,10 +131,10 @@ model = GNNModel(input_dim, hidden_dim, output_dim).to(device)
 
 # Define loss function and optimizer
 criterion = nn.MSELoss()
-optimizer = Adam(model.parameters(), lr=0.001)
+optimizer = Adam(model.parameters(), lr=0.01)
 
 # Training loop
-num_epochs = 50
+num_epochs = 200
 train_losses = []
 val_losses = []
 best_val_loss = float('inf')
@@ -149,7 +149,7 @@ for epoch in range(num_epochs):
         for i, graph_data in enumerate(graph_data_list):
             inputs = graph_data.to(device)
             guidance_vector = outputs[i][0].view(1).to(device)
-            targets = outputs[i][5:].to(device)
+            targets = outputs[i][1:].to(device)
             
             # Forward pass
             outputs_pred = model(inputs, guidance_vector)
