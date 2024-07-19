@@ -149,11 +149,11 @@ criterion = nn.MSELoss()
 optimizer = Adam(model.parameters(), lr=0.01)
 
 # Training loop
-num_epochs = 1000
+num_epochs = 10000
 train_losses = []
 val_losses = []
 best_val_loss = float('inf')
-best_model_path = 'best_model.pth'
+best_model_path = 'best_model_multi.pth'
 '''
 '''
 for epoch in range(num_epochs):

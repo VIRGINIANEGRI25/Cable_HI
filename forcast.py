@@ -134,7 +134,7 @@ criterion = nn.MSELoss()
 optimizer = Adam(model.parameters(), lr=0.01)
 
 # Training loop
-num_epochs = 1000
+num_epochs = 10000
 train_losses = []
 val_losses = []
 best_val_loss = float('inf')
@@ -245,3 +245,4 @@ plt.ylabel('Predictions')
 plt.title('Ground Truth vs Predictions (Test Set)')
 plt.grid(True)
 plt.show()
+                          
