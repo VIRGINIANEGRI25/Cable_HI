@@ -17,8 +17,6 @@ def custom_collate(batch):
 class CustomTensorDataset(Dataset):
     def __init__(self, directory, train=True, validation_split=0.2, random_seed=42):
         self.file_paths = [os.path.join(directory, fname) for fname in os.listdir(directory) if fname.endswith('.pt')]
-        
-        # Split dataset into train and validation sets
         train_files, val_files = train_test_split(self.file_paths, test_size=validation_split, random_state=random_seed)
         
         if train:
@@ -33,8 +31,6 @@ class CustomTensorDataset(Dataset):
         tensor_dict = self.data[idx]
         x = tensor_dict['input']
         y = tensor_dict['output']
-        
-        # Define edges (specific connections: 1st-2nd, 1st-3rd, 2nd-3rd)
         edge_index = torch.tensor([[0, 0, 1],
                                    [1, 2, 2]], dtype=torch.long)
         
