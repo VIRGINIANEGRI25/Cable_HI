@@ -135,7 +135,7 @@ train_losses = []
 val_losses = []
 best_val_loss = float('inf')
 best_model_path = 'best_model.pth'
-'''
+
 '''
 for epoch in range(num_epochs):
     # Training
@@ -193,7 +193,7 @@ for epoch in range(num_epochs):
         best_val_loss = avg_val_loss
         torch.save(model.state_dict(), best_model_path)
         print(f'Saving best model with validation loss: {best_val_loss}')
-
+'''
 # Load best model for evaluation on the test set
 best_model = GNNModel(input_dim, hidden_dim, output_dim).to(device)
 best_model.load_state_dict(torch.load(best_model_path))

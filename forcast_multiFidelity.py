@@ -6,26 +6,45 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 from torch.optim import Adam
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
+from torch.utils.data import ConcatDataset
+from torch_geometric.nn import GATConv
+
+# Function to compute global minima and maxima
+def compute_global_min_max(directory):
+    input_min, input_max = float('inf'), float('-inf')
+    output_min, output_max = float('inf'), float('-inf')
+    
+    for fname in os.listdir(directory):
+        if fname.endswith('.pt'):
+            tensor_dict = torch.load(os.path.join(directory, fname))
+            input_min = min(input_min, tensor_dict['input'].min().item())
+            input_max = max(input_max, tensor_dict['input'].max().item())
+            output_min = min(output_min, tensor_dict['output'].min().item())
+            output_max = max(output_max, tensor_dict['output'].max().item())
+    
+    return input_min, input_max, output_min, output_max
+
+# Normalize function
+def normalize(tensor, min_val, max_val):
+    return (tensor - min_val) / (max_val - min_val)
+
+# Calculate global minima and maxima
+data_directory = 'data_processed'
+input_min, input_max, output_min, output_max = compute_global_min_max(data_directory)
 
 def custom_collate(batch):
     graph_data_list = [item[0] for item in batch]
     outputs = torch.stack([item[1] for item in batch])
     return graph_data_list, outputs
 
-
 class CustomTensorDataset(Dataset):
     def __init__(self, directory, train=True, validation_split=0.2, random_seed=42):
         self.file_paths = [os.path.join(directory, fname) for fname in os.listdir(directory) if fname.endswith('.pt')]
-        
-        # Split dataset into train and validation sets
         train_files, val_files = train_test_split(self.file_paths, test_size=validation_split, random_state=random_seed)
-        
-        if train:
-            self.data = [torch.load(fp) for fp in train_files]
-        else:
-            self.data = [torch.load(fp) for fp in val_files]
+        self.data = [torch.load(fp) for fp in (train_files if train else val_files)]
 
     def __len__(self):
         return len(self.data)
@@ -34,6 +53,10 @@ class CustomTensorDataset(Dataset):
         tensor_dict = self.data[idx]
         x = tensor_dict['input']
         y = tensor_dict['output']
+        
+        # Normalize inputs and outputs
+        x = normalize(x, input_min, input_max)
+        y = normalize(y, output_min, output_max)
 
         num_nodes = x.size(0)
         if num_nodes == 2:
@@ -46,27 +69,16 @@ class CustomTensorDataset(Dataset):
         graph_data = Data(x=x, edge_index=edge_index)
         return graph_data, y
 
-# Directory containing the tensor files
-data_directory = 'data_processed'
 train_dataset = CustomTensorDataset(data_directory, train=True)
 val_dataset = CustomTensorDataset(data_directory, train=False)
+combined_dataset = ConcatDataset([train_dataset, val_dataset])
 
-batch_size = 512 
+batch_size = 128
 shuffle = True
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=custom_collate)
-val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate)
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=custom_collate, num_workers=4)
+val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate, num_workers=4)
 
-
-# Directory containing the tensor files
-data_directory = 'data_processed'
-train_dataset = CustomTensorDataset(data_directory, train=True)
-val_dataset = CustomTensorDataset(data_directory, train=False)
-
-batch_size = 512 
-shuffle = True
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=custom_collate)
-val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate)
-
+'''
 class GNNModel(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
         super(GNNModel, self).__init__()
@@ -74,7 +86,7 @@ class GNNModel(nn.Module):
         self.conv2 = GCNConv(hidden_dim, hidden_dim)
         self.fc_gnn = nn.Linear(hidden_dim, hidden_dim)
         self.fc_guidance = nn.Linear(1, hidden_dim)
-        self.fc_out = nn.Linear(hidden_dim, output_dim - 1)  # Output dimension is one less
+        self.fc_out = nn.Linear(hidden_dim, output_dim - 1)
 
     def forward(self, data, guidance):
         x, edge_index = data.x, data.edge_index
@@ -82,110 +94,83 @@ class GNNModel(nn.Module):
         x = F.relu(x)
         x = self.conv2(x, edge_index)
         x = F.relu(x)
-        x = torch.mean(x, dim=0)  # Aggregate node features
-
+        x = torch.mean(x, dim=0)
         x_gnn = self.fc_gnn(x)
-        
-        guidance = guidance.view(-1, 1)  # Ensure guidance is the correct shape
+        guidance = guidance.view(-1, 1)
         x_guidance = F.relu(self.fc_guidance(guidance))
-
         x_combined = x_gnn + x_guidance
         x_out = self.fc_out(x_combined)
-        
         return x_out
+'''    
 
-class GNNLSTMModel(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, dropout=0.5):
-        super(GNNLSTMModel, self).__init__()
-        self.conv1 = GCNConv(input_dim, hidden_dim)
-        self.bn1 = nn.BatchNorm1d(hidden_dim)
-        self.conv2 = GCNConv(hidden_dim, hidden_dim)
-        self.bn2 = nn.BatchNorm1d(hidden_dim)
-        self.fc_gnn = nn.Linear(hidden_dim, hidden_dim)
+class GNNModel(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim):
+        super(GNNModel, self).__init__()
+        self.att_conv1 = GATConv(input_dim, hidden_dim, heads=4, concat=True)
+        self.att_conv2 = GATConv(hidden_dim * 4, hidden_dim, heads=4, concat=True)  # 4 heads in each layer
+        self.fc_gnn = nn.Linear(hidden_dim * 4, hidden_dim)  # Adjusted input dimension
         self.fc_guidance = nn.Linear(1, hidden_dim)
-        self.bidirectional_lstm = nn.LSTM(input_size=hidden_dim, hidden_size=hidden_dim, num_layers=1, batch_first=True, bidirectional=True)
-        self.dropout = nn.Dropout(dropout)
-        self.fc_out = nn.Linear(2 * hidden_dim, output_dim - 1)  # Output dimension is one less
+        self.fc_out = nn.Linear(hidden_dim, output_dim - 1)
 
     def forward(self, data, guidance):
         x, edge_index = data.x, data.edge_index
-        x = self.conv1(x, edge_index)
-        x = self.bn1(x)
-        x = F.relu(x)
-        x = self.conv2(x, edge_index)
-        x = self.bn2(x)
-        x = F.relu(x)
-        
-        # Aggregate node features
-        x = torch.mean(x, dim=0).unsqueeze(0)  # Add batch dimension (1, num_nodes, hidden_dim)
-        
-        # Bidirectional LSTM on node features
-        lstm_out, _ = self.bidirectional_lstm(x)
-        lstm_out = torch.mean(lstm_out, dim=1)  # Average across nodes, keep bidirectional output
-        
-        x_gnn = self.fc_gnn(lstm_out)
-        x_gnn = self.dropout(x_gnn)
-        
-        guidance = guidance.view(-1, 1)  # Ensure guidance is the correct shape
+        x = self.att_conv1(x, edge_index)
+        x = F.elu(x)
+        x = self.att_conv2(x, edge_index)
+        x = F.elu(x)
+        x = torch.mean(x, dim=0)  # Aggregate node features
+        x_gnn = self.fc_gnn(x)
+        guidance = guidance.view(-1, 1)
         x_guidance = F.relu(self.fc_guidance(guidance))
-        x_guidance = self.dropout(x_guidance)
-
-        x_combined = torch.cat((x_gnn, x_guidance), dim=1)
+        x_combined = x_gnn + x_guidance
         x_out = self.fc_out(x_combined)
-        
         return x_out
-    
-# Check if CUDA is available and set the device accordingly
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-input_dim = train_dataset[0][0].x.size(1)  # Assuming all inputs have the same dimension
-hidden_dim = 16  # Number of hidden units
-output_dim = train_dataset[0][1].size(0)  # Assuming all outputs have the same dimension
+input_dim = train_dataset[0][0].x.size(1)
+hidden_dim = 16
+output_dim = train_dataset[0][1].size(0)
 
 model = GNNModel(input_dim, hidden_dim, output_dim).to(device)
 
-# Define loss function and optimizer
 criterion = nn.MSELoss()
-optimizer = Adam(model.parameters(), lr=0.01)
+optimizer = Adam(model.parameters(), lr=0.001)
+scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10, verbose=True)
 
-# Training loop
-num_epochs = 10000
+num_epochs = 200
 train_losses = []
 val_losses = []
 best_val_loss = float('inf')
 best_model_path = 'best_model_multi.pth'
+early_stopping_patience = 25
+early_stopping_counter = 0
 '''
 '''
 for epoch in range(num_epochs):
-    # Training
     model.train()
+    epoch_train_loss = 0
     for batch in train_loader:
         graph_data_list, outputs = batch
-        
         for i, graph_data in enumerate(graph_data_list):
             inputs = graph_data.to(device)
             guidance_vector = outputs[i][0].view(1).to(device)
             targets = outputs[i][1:].to(device)
-            
-            # Forward pass
             outputs_pred = model(inputs, guidance_vector)
-            
-            # Ensure the dimensions match for MSE loss calculation
             outputs_pred = outputs_pred.view(-1)
             targets = targets.view(-1)
-            
             loss = criterion(outputs_pred, targets)
-            
-            # Backward pass and optimization
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-    
-    train_losses.append(loss.item())
-    print(f'Epoch {epoch+1}, Train Loss: {loss.item()}')
-    
-    # Validation
+            epoch_train_loss += loss.item()
+
+    avg_train_loss = epoch_train_loss / len(train_loader)
+    train_losses.append(avg_train_loss)
+    print(f'Epoch {epoch+1}, Train Loss: {avg_train_loss}')
+
     model.eval()
+    epoch_val_loss = 0
     with torch.no_grad():
         for batch in val_loader:
             graph_data_list, outputs = batch
@@ -193,68 +178,61 @@ for epoch in range(num_epochs):
                 inputs = graph_data.to(device)
                 guidance_vector = outputs[i][0].view(1).to(device)
                 targets = outputs[i][1:].to(device)
-                
-                # Forward pass
                 outputs_pred = model(inputs, guidance_vector)
-                
-                # Ensure the dimensions match for MSE loss calculation
                 outputs_pred = outputs_pred.view(-1)
                 targets = targets.view(-1)
-                
                 loss = criterion(outputs_pred, targets)
-                val_losses.append(loss.item())
-    
-    avg_val_loss = torch.tensor(val_losses).mean().item()
+                epoch_val_loss += loss.item()
+
+    avg_val_loss = epoch_val_loss / len(val_loader)
+    val_losses.append(avg_val_loss)
     print(f'Epoch {epoch+1}, Validation Loss: {avg_val_loss}')
-    
-    # Save best model
+
+    scheduler.step(avg_val_loss)
+
     if avg_val_loss < best_val_loss:
         best_val_loss = avg_val_loss
         torch.save(model.state_dict(), best_model_path)
         print(f'Saving best model with validation loss: {best_val_loss}')
+        early_stopping_counter = 0
+    else:
+        early_stopping_counter += 1
 
-# Load best model for evaluation on the test set
+    if early_stopping_counter >= early_stopping_patience:
+        print('Early stopping triggered')
+        break
+'''
+'''
 best_model = GNNModel(input_dim, hidden_dim, output_dim).to(device)
 best_model.load_state_dict(torch.load(best_model_path))
 
-# Evaluation on test set
 test_losses = []
 predictions_test = []
 gt_values_test = []
 
 best_model.eval()
 with torch.no_grad():
-    for batch in val_loader:  # Using val_loader for test evaluation here, adjust as needed
+    for batch in val_loader:
         graph_data_list, outputs = batch
         for i, graph_data in enumerate(graph_data_list):
             inputs = graph_data.to(device)
             guidance_vector = outputs[i][0].view(1).to(device)
             targets = outputs[i][1:].to(device)
-            
-            # Forward pass
             outputs_pred = best_model(inputs, guidance_vector)
-            #print("GT",targets, "PD",outputs_pred)
-            #break
-            # Collect predictions and GT values
+            print(targets,outputs_pred)
             predictions_test.append(outputs_pred.cpu().numpy())
             gt_values_test.append(targets.cpu().numpy())
-            
-            # Compute loss
             loss = criterion(outputs_pred.view(-1), targets.view(-1))
             test_losses.append(loss.item())
 
-# Compute average test loss
 avg_test_loss = sum(test_losses) / len(test_losses)
 print(f'Avg Test Loss: {avg_test_loss}')
 
-# Plot GT vs Predictions for test set
-# Flatten lists
 predictions_test = [item for sublist in predictions_test for item in sublist]
 gt_values_test = [item for sublist in gt_values_test for item in sublist]
 
-# Plot GT vs Predictions
 plt.figure(figsize=(8, 8))
-plt.scatter(gt_values_test, predictions_test, alpha=0.5)
+plt.scatter(gt_values_test, predictions_test, alpha=0.9, s = 10)
 plt.xlabel('Ground Truth')
 plt.ylabel('Predictions')
 plt.title('Ground Truth vs Predictions (Test Set)')
