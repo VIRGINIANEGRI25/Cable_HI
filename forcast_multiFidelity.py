@@ -71,7 +71,6 @@ class CustomTensorDataset(Dataset):
 
 train_dataset = CustomTensorDataset(data_directory, train=True)
 val_dataset = CustomTensorDataset(data_directory, train=False)
-combined_dataset = ConcatDataset([train_dataset, val_dataset])
 
 batch_size = 128
 shuffle = True

@@ -38,7 +38,7 @@ def denormalize(tensor, min_val, max_val):
     return tensor * (max_val - min_val) + min_val
 
 # Calculate global minima and maxima
-data_directory = 'data_processed'
+data_directory = 'test_set'
 input_min, input_max, output_min, output_max = compute_global_min_max(data_directory)
 
 def custom_collate(batch):
@@ -75,13 +75,9 @@ class CustomTensorDataset(Dataset):
         graph_data = Data(x=x, edge_index=edge_index)
         return graph_data, y
 
-train_dataset = CustomTensorDataset(data_directory, train=True)
 val_dataset = CustomTensorDataset(data_directory, train=False)
-combined_dataset = ConcatDataset([train_dataset, val_dataset])
-
 batch_size = 128
 shuffle = True
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=custom_collate, num_workers=4)
 val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate, num_workers=4)
 
 class GNNModel(nn.Module):
@@ -109,9 +105,9 @@ class GNNModel(nn.Module):
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-input_dim = train_dataset[0][0].x.size(1)
+input_dim = val_dataset[0][0].x.size(1)
 hidden_dim = 16
-output_dim = train_dataset[0][1].size(0)
+output_dim = val_dataset[0][1].size(0)
 
 model = GNNModel(input_dim, hidden_dim, output_dim).to(device)
 
