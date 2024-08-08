@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from torch.utils.data import ConcatDataset
 from torch_geometric.nn import GATConv
+from sklearn.metrics import r2_score, mean_absolute_percentage_error, mean_squared_error
+import numpy as np
 
 # Function to compute global minima and maxima
 def compute_global_min_max(directory):
@@ -30,6 +32,10 @@ def compute_global_min_max(directory):
 # Normalize function
 def normalize(tensor, min_val, max_val):
     return (tensor - min_val) / (max_val - min_val)
+
+# Denormalize function
+def denormalize(tensor, min_val, max_val):
+    return tensor * (max_val - min_val) + min_val
 
 # Calculate global minima and maxima
 data_directory = 'data_processed'
@@ -78,31 +84,6 @@ shuffle = True
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=custom_collate, num_workers=4)
 val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate, num_workers=4)
 
-'''
-class GNNModel(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim):
-        super(GNNModel, self).__init__()
-        self.conv1 = GCNConv(input_dim, hidden_dim)
-        self.conv2 = GCNConv(hidden_dim, hidden_dim)
-        self.fc_gnn = nn.Linear(hidden_dim, hidden_dim)
-        self.fc_guidance = nn.Linear(1, hidden_dim)
-        self.fc_out = nn.Linear(hidden_dim, output_dim - 1)
-
-    def forward(self, data, guidance):
-        x, edge_index = data.x, data.edge_index
-        x = self.conv1(x, edge_index)
-        x = F.relu(x)
-        x = self.conv2(x, edge_index)
-        x = F.relu(x)
-        x = torch.mean(x, dim=0)
-        x_gnn = self.fc_gnn(x)
-        guidance = guidance.view(-1, 1)
-        x_guidance = F.relu(self.fc_guidance(guidance))
-        x_combined = x_gnn + x_guidance
-        x_out = self.fc_out(x_combined)
-        return x_out
-'''    
-
 class GNNModel(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
         super(GNNModel, self).__init__()
@@ -145,72 +126,16 @@ best_val_loss = float('inf')
 best_model_path = 'best_model_multi.pth'
 early_stopping_patience = 25
 early_stopping_counter = 0
-'''
-'''
-for epoch in range(num_epochs):
-    model.train()
-    epoch_train_loss = 0
-    for batch in train_loader:
-        graph_data_list, outputs = batch
-        for i, graph_data in enumerate(graph_data_list):
-            inputs = graph_data.to(device)
-            guidance_vector = outputs[i][0].view(1).to(device)
-            targets = outputs[i][1:].to(device)
-            outputs_pred = model(inputs, guidance_vector)
-            outputs_pred = outputs_pred.view(-1)
-            targets = targets.view(-1)
-            loss = criterion(outputs_pred, targets)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            epoch_train_loss += loss.item()
 
-    avg_train_loss = epoch_train_loss / len(train_loader)
-    train_losses.append(avg_train_loss)
-    print(f'Epoch {epoch+1}, Train Loss: {avg_train_loss}')
-
-    model.eval()
-    epoch_val_loss = 0
-    with torch.no_grad():
-        for batch in val_loader:
-            graph_data_list, outputs = batch
-            for i, graph_data in enumerate(graph_data_list):
-                inputs = graph_data.to(device)
-                guidance_vector = outputs[i][0].view(1).to(device)
-                targets = outputs[i][1:].to(device)
-                outputs_pred = model(inputs, guidance_vector)
-                outputs_pred = outputs_pred.view(-1)
-                targets = targets.view(-1)
-                loss = criterion(outputs_pred, targets)
-                epoch_val_loss += loss.item()
-
-    avg_val_loss = epoch_val_loss / len(val_loader)
-    val_losses.append(avg_val_loss)
-    print(f'Epoch {epoch+1}, Validation Loss: {avg_val_loss}')
-
-    scheduler.step(avg_val_loss)
-
-    if avg_val_loss < best_val_loss:
-        best_val_loss = avg_val_loss
-        torch.save(model.state_dict(), best_model_path)
-        print(f'Saving best model with validation loss: {best_val_loss}')
-        early_stopping_counter = 0
-    else:
-        early_stopping_counter += 1
-
-    if early_stopping_counter >= early_stopping_patience:
-        print('Early stopping triggered')
-        break
-'''
-'''
 best_model = GNNModel(input_dim, hidden_dim, output_dim).to(device)
 best_model.load_state_dict(torch.load(best_model_path))
 
-test_losses = []
-predictions_test = []
-gt_values_test = []
 
 best_model.eval()
+predictions_test = []
+gt_values_test = []
+test_losses = []
+
 with torch.no_grad():
     for batch in val_loader:
         graph_data_list, outputs = batch
@@ -219,22 +144,42 @@ with torch.no_grad():
             guidance_vector = outputs[i][0].view(1).to(device)
             targets = outputs[i][1:].to(device)
             outputs_pred = best_model(inputs, guidance_vector)
-            print(targets,outputs_pred)
-            predictions_test.append(outputs_pred.cpu().numpy())
-            gt_values_test.append(targets.cpu().numpy())
+            predictions_test.append(outputs_pred.cpu().numpy().flatten())
+            gt_values_test.append(targets.cpu().numpy().flatten())
             loss = criterion(outputs_pred.view(-1), targets.view(-1))
             test_losses.append(loss.item())
 
 avg_test_loss = sum(test_losses) / len(test_losses)
 print(f'Avg Test Loss: {avg_test_loss}')
 
-predictions_test = [item for sublist in predictions_test for item in sublist]
-gt_values_test = [item for sublist in gt_values_test for item in sublist]
+# Convert lists to numpy arrays and flatten them
+predictions_test_flat = np.concatenate(predictions_test, axis=0)
+gt_values_test_flat = np.concatenate(gt_values_test, axis=0)
 
-plt.figure(figsize=(8, 8))
-plt.scatter(gt_values_test, predictions_test, alpha=0.9, s = 10)
-plt.xlabel('Ground Truth')
-plt.ylabel('Predictions')
-plt.title('Ground Truth vs Predictions (Test Set)')
-plt.grid(True)
-plt.show()
+# Denormalize predictions and ground truth values
+predictions_test_flat_denorm = denormalize(torch.tensor(predictions_test_flat), output_min, output_max).numpy()
+gt_values_test_flat_denorm = denormalize(torch.tensor(gt_values_test_flat), output_min, output_max).numpy()
+
+#print('Sample of denormalized predictions:')
+#for item in predictions_test_flat_denorm[4:]:  
+#    print(item)
+
+#print(f'Number of ground truth items: {len(gt_values_test_flat_denorm)}')
+#print('Sample of denormalized ground truth values:')
+#for item in gt_values_test_flat_denorm[4:]: 
+#    print(item)
+
+
+r2_HI = r2_score(gt_values_test_flat_denorm[4:], predictions_test_flat_denorm[4:])
+print(f'R2 score for HI: {r2_HI}')
+r2_measurement = r2_score(gt_values_test_flat_denorm[:4], predictions_test_flat_denorm[:4])
+print(f'R2 score for measurements: {r2_measurement}')
+mape_HI = mean_absolute_percentage_error(gt_values_test_flat_denorm[4:], predictions_test_flat_denorm[4:])
+print(f'MAPE for the HI: {mape_HI}')
+mape_measurement = mean_absolute_percentage_error(gt_values_test_flat_denorm[:4], predictions_test_flat_denorm[:4])
+print(f'MAPE score for measurements: {mape_measurement}')
+rmse_HI = np.sqrt(mean_squared_error(gt_values_test_flat_denorm[:4], predictions_test_flat_denorm[:4]))
+print(f'RMSE for the HI: {rmse_HI}')
+rmse_measurement = np.sqrt(mean_squared_error(gt_values_test_flat_denorm[:4], predictions_test_flat_denorm[:4]))
+print(f'RMSE score for measurements: {rmse_measurement}')
+
