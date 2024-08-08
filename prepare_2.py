@@ -49,7 +49,7 @@ def process_csv(file_path):
     print(f"Processed {file_path} -> {output_file_path1}, {output_file_path2}, {output_file_path3}")
 
 # Define the directory containing the CSV files
-directory = 'data_processed/'  # Change this to your directory
+directory = 'test_set/'  # Change this to your directory
 
 # Find all CSV files in the directory
 csv_files = glob.glob(os.path.join(directory, '*.csv'))
