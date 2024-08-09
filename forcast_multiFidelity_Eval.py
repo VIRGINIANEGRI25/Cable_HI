@@ -10,9 +10,9 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from torch.utils.data import ConcatDataset
-from torch_geometric.nn import GATConv
 from sklearn.metrics import r2_score, mean_absolute_percentage_error, mean_squared_error
 import numpy as np
+from torch_geometric.nn import GATConv, global_mean_pool
 
 # Function to compute global minima and maxima
 def compute_global_min_max(directory):
@@ -48,7 +48,7 @@ def custom_collate(batch):
 
 class CustomTensorDataset(Dataset):
     def __init__(self, directory, train=True, validation_split=0.2, random_seed=42):
-        self.file_paths = [os.path.join(directory, fname) for fname in os.listdir(directory) if fname.endswith('.pt')]
+        self.file_paths = [os.path.join(directory, fname) for fname in os.listdir(directory) if fname.endswith('_3.pt')]
         train_files, val_files = train_test_split(self.file_paths, test_size=validation_split, random_state=random_seed)
         self.data = [torch.load(fp) for fp in (train_files if train else val_files)]
 
@@ -70,15 +70,41 @@ class CustomTensorDataset(Dataset):
         elif num_nodes == 3:
             edge_index = torch.tensor([[0, 0, 1], [1, 2, 2]], dtype=torch.long)
         else:
-            edge_index = torch.empty((2, 0), dtype=torch.long)  # No edges for 1 node
+            #edge_index = torch.empty((2, 0), dtype=torch.long)  # No edges for 1 node
+            edge_index = torch.tensor([[0], [0]], dtype=torch.long)
+
 
         graph_data = Data(x=x, edge_index=edge_index)
         return graph_data, y
 
 val_dataset = CustomTensorDataset(data_directory, train=False)
-batch_size = 128
-shuffle = True
+
+batch_size = 1
 val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate, num_workers=4)
+
+'''
+class GNNModel(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim):
+        super(GNNModel, self).__init__()
+        self.conv1 = GCNConv(input_dim, hidden_dim)
+        self.conv2 = GCNConv(hidden_dim, hidden_dim)
+        self.fc_gnn = nn.Linear(hidden_dim, hidden_dim)
+        self.fc_guidance = nn.Linear(1, hidden_dim)
+        self.fc_out = nn.Linear(hidden_dim, output_dim - 1)
+
+    def forward(self, data, guidance):
+        x, edge_index = data.x, data.edge_index
+        x = self.conv1(x, edge_index)
+        x = F.relu(x)
+        x = self.conv2(x, edge_index)
+        x = F.relu(x)
+        x = torch.mean(x, dim=0)
+        x_gnn = self.fc_gnn(x)
+        guidance = guidance.view(-1, 1)
+        x_guidance = F.relu(self.fc_guidance(guidance))
+        x_combined = x_gnn + x_guidance
+        x_out = self.fc_out(x_combined)
+        return x_out
 
 class GNNModel(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
@@ -102,7 +128,29 @@ class GNNModel(nn.Module):
         x_combined = x_gnn + x_guidance
         x_out = self.fc_out(x_combined)
         return x_out
+'''   
+class GNNModel(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim, heads=4):
+        super(GNNModel, self).__init__()
+        self.att_conv1 = GATConv(input_dim, hidden_dim, heads=heads, concat=True)
+        self.att_conv2 = GATConv(hidden_dim * heads, hidden_dim, heads=heads, concat=True)
+        self.fc_gnn = nn.Linear(hidden_dim * heads, hidden_dim)  # Adjusted input dimension
+        self.fc_guidance = nn.Linear(1, hidden_dim)
+        self.fc_out = nn.Linear(hidden_dim, output_dim - 1)  # Assuming output_dim-1 is intentional
 
+    def forward(self, data, guidance):
+        x, edge_index, batch = data.x, data.edge_index, data.batch
+        x = self.att_conv1(x, edge_index)
+        x = F.elu(x)
+        x = self.att_conv2(x, edge_index)
+        x = F.elu(x)
+        x = global_mean_pool(x, batch)  # Aggregate node features for each graph in the batch
+        x_gnn = self.fc_gnn(x)
+        guidance = guidance.view(-1, 1)
+        x_guidance = F.relu(self.fc_guidance(guidance))
+        x_combined = x_gnn + x_guidance
+        x_out = self.fc_out(x_combined)
+        return x_out
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 input_dim = val_dataset[0][0].x.size(1)
@@ -115,13 +163,11 @@ criterion = nn.MSELoss()
 optimizer = Adam(model.parameters(), lr=0.001)
 scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10, verbose=True)
 
-num_epochs = 500
+
 train_losses = []
 val_losses = []
 best_val_loss = float('inf')
 best_model_path = 'best_model_multi.pth'
-early_stopping_patience = 25
-early_stopping_counter = 0
 
 best_model = GNNModel(input_dim, hidden_dim, output_dim).to(device)
 best_model.load_state_dict(torch.load(best_model_path))
@@ -148,22 +194,13 @@ with torch.no_grad():
 avg_test_loss = sum(test_losses) / len(test_losses)
 print(f'Avg Test Loss: {avg_test_loss}')
 
-# Convert lists to numpy arrays and flatten them
 predictions_test_flat = np.concatenate(predictions_test, axis=0)
 gt_values_test_flat = np.concatenate(gt_values_test, axis=0)
 
-# Denormalize predictions and ground truth values
+
 predictions_test_flat_denorm = denormalize(torch.tensor(predictions_test_flat), output_min, output_max).numpy()
 gt_values_test_flat_denorm = denormalize(torch.tensor(gt_values_test_flat), output_min, output_max).numpy()
 
-#print('Sample of denormalized predictions:')
-#for item in predictions_test_flat_denorm[4:]:  
-#    print(item)
-
-#print(f'Number of ground truth items: {len(gt_values_test_flat_denorm)}')
-#print('Sample of denormalized ground truth values:')
-#for item in gt_values_test_flat_denorm[4:]: 
-#    print(item)
 
 
 r2_HI = r2_score(gt_values_test_flat_denorm[4:], predictions_test_flat_denorm[4:])
@@ -176,6 +213,5 @@ mape_measurement = mean_absolute_percentage_error(gt_values_test_flat_denorm[:4]
 print(f'MAPE score for measurements: {mape_measurement}')
 rmse_HI = np.sqrt(mean_squared_error(gt_values_test_flat_denorm[:4], predictions_test_flat_denorm[:4]))
 print(f'RMSE for the HI: {rmse_HI}')
-rmse_measurement = np.sqrt(mean_squared_error(gt_values_test_flat_denorm[:4], predictions_test_flat_denorm[:4]))
+rmse_measurement = np.sqrt(mean_squared_error(gt_values_test_flat_denorm[4:], predictions_test_flat_denorm[4:]))
 print(f'RMSE score for measurements: {rmse_measurement}')
-
