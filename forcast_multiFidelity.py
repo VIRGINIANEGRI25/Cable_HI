@@ -10,7 +10,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from torch.utils.data import ConcatDataset
-from torch_geometric.nn import GATConv, global_mean_pool
+from torch_geometric.nn import GATConv
 
 # Function to compute global minima and maxima
 def compute_global_min_max(directory):
@@ -42,7 +42,7 @@ def custom_collate(batch):
 
 class CustomTensorDataset(Dataset):
     def __init__(self, directory, train=True, validation_split=0.2, random_seed=42):
-        self.file_paths = [os.path.join(directory, fname) for fname in os.listdir(directory) if fname.endswith('_1.pt')]
+        self.file_paths = [os.path.join(directory, fname) for fname in os.listdir(directory) if fname.endswith('.pt')]
         train_files, val_files = train_test_split(self.file_paths, test_size=validation_split, random_state=random_seed)
         self.data = [torch.load(fp) for fp in (train_files if train else val_files)]
 
@@ -64,9 +64,7 @@ class CustomTensorDataset(Dataset):
         elif num_nodes == 3:
             edge_index = torch.tensor([[0, 0, 1], [1, 2, 2]], dtype=torch.long)
         else:
-            #edge_index = torch.empty((2, 0), dtype=torch.long)  # No edges for 1 node
-            edge_index = torch.tensor([[0], [0]], dtype=torch.long)
-
+            edge_index = torch.empty((2, 0), dtype=torch.long)  # No edges for 1 node
 
         graph_data = Data(x=x, edge_index=edge_index)
         return graph_data, y
@@ -102,6 +100,7 @@ class GNNModel(nn.Module):
         x_combined = x_gnn + x_guidance
         x_out = self.fc_out(x_combined)
         return x_out
+'''    
 
 class GNNModel(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
@@ -125,29 +124,7 @@ class GNNModel(nn.Module):
         x_combined = x_gnn + x_guidance
         x_out = self.fc_out(x_combined)
         return x_out
-'''   
-class GNNModel(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, heads=4):
-        super(GNNModel, self).__init__()
-        self.att_conv1 = GATConv(input_dim, hidden_dim, heads=heads, concat=True)
-        self.att_conv2 = GATConv(hidden_dim * heads, hidden_dim, heads=heads, concat=True)
-        self.fc_gnn = nn.Linear(hidden_dim * heads, hidden_dim)  # Adjusted input dimension
-        self.fc_guidance = nn.Linear(1, hidden_dim)
-        self.fc_out = nn.Linear(hidden_dim, output_dim - 1)  # Assuming output_dim-1 is intentional
 
-    def forward(self, data, guidance):
-        x, edge_index, batch = data.x, data.edge_index, data.batch
-        x = self.att_conv1(x, edge_index)
-        x = F.elu(x)
-        x = self.att_conv2(x, edge_index)
-        x = F.elu(x)
-        x = global_mean_pool(x, batch)  # Aggregate node features for each graph in the batch
-        x_gnn = self.fc_gnn(x)
-        guidance = guidance.view(-1, 1)
-        x_guidance = F.relu(self.fc_guidance(guidance))
-        x_combined = x_gnn + x_guidance
-        x_out = self.fc_out(x_combined)
-        return x_out
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 input_dim = train_dataset[0][0].x.size(1)
@@ -223,3 +200,40 @@ for epoch in range(num_epochs):
     if early_stopping_counter >= early_stopping_patience:
         print('Early stopping triggered')
         break
+'''
+'''
+best_model = GNNModel(input_dim, hidden_dim, output_dim).to(device)
+best_model.load_state_dict(torch.load(best_model_path))
+
+test_losses = []
+predictions_test = []
+gt_values_test = []
+
+best_model.eval()
+with torch.no_grad():
+    for batch in val_loader:
+        graph_data_list, outputs = batch
+        for i, graph_data in enumerate(graph_data_list):
+            inputs = graph_data.to(device)
+            guidance_vector = outputs[i][0].view(1).to(device)
+            targets = outputs[i][1:].to(device)
+            outputs_pred = best_model(inputs, guidance_vector)
+            print(targets,outputs_pred)
+            predictions_test.append(outputs_pred.cpu().numpy())
+            gt_values_test.append(targets.cpu().numpy())
+            loss = criterion(outputs_pred.view(-1), targets.view(-1))
+            test_losses.append(loss.item())
+
+avg_test_loss = sum(test_losses) / len(test_losses)
+print(f'Avg Test Loss: {avg_test_loss}')
+
+predictions_test = [item for sublist in predictions_test for item in sublist]
+gt_values_test = [item for sublist in gt_values_test for item in sublist]
+
+plt.figure(figsize=(8, 8))
+plt.scatter(gt_values_test, predictions_test, alpha=0.9, s = 10)
+plt.xlabel('Ground Truth')
+plt.ylabel('Predictions')
+plt.title('Ground Truth vs Predictions (Test Set)')
+plt.grid(True)
+plt.show()
