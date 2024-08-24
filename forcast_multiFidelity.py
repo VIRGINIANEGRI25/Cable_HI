@@ -42,7 +42,7 @@ def custom_collate(batch):
 
 class CustomTensorDataset(Dataset):
     def __init__(self, directory, train=True, validation_split=0.2, random_seed=42):
-        self.file_paths = [os.path.join(directory, fname) for fname in os.listdir(directory) if fname.endswith('.pt')]
+        self.file_paths = [os.path.join(directory, fname) for fname in os.listdir(directory) if fname.endswith('_2.pt')]
         train_files, val_files = train_test_split(self.file_paths, test_size=validation_split, random_state=random_seed)
         self.data = [torch.load(fp) for fp in (train_files if train else val_files)]
 
@@ -53,10 +53,19 @@ class CustomTensorDataset(Dataset):
         tensor_dict = self.data[idx]
         x = tensor_dict['input']
         y = tensor_dict['output']
-        
         # Normalize inputs and outputs
         x = normalize(x, input_min, input_max)
         y = normalize(y, output_min, output_max)
+        #ablation
+        #x = x[1:, :]  
+        #y = y[1:]    
+        x = torch.cat((x[:1, :], x[2:, :]), dim=0)
+        y = torch.cat((y[:1], y[2:]), dim=0)
+        #x = torch.cat((x[:2, :], x[3:, :]), dim=0)
+        #y = torch.cat((y[:2], y[3:]), dim=0)
+        #x = x[:3, :]  
+        #y = y[:3]   
+
 
         num_nodes = x.size(0)
         if num_nodes == 2:

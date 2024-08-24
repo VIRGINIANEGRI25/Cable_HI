@@ -63,6 +63,15 @@ class CustomTensorDataset(Dataset):
         # Normalize inputs and outputs
         x = normalize(x, input_min, input_max)
         y = normalize(y, output_min, output_max)
+        #ablation
+        #x = x[1:, :]  
+        #y = y[1:]    
+        x = torch.cat((x[:1, :], x[2:, :]), dim=0)
+        y = torch.cat((y[:1], y[2:]), dim=0)
+        #x = torch.cat((x[:2, :], x[3:, :]), dim=0)
+        #y = torch.cat((y[:2], y[3:]), dim=0)
+        #x = x[:3, :]  
+        #y = y[:3]   
 
         num_nodes = x.size(0)
         if num_nodes == 2:
